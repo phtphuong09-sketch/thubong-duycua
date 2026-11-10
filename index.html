@@ -108,6 +108,7 @@ function setup() {
   U.setTransform(DPR, 0, 0, DPR, 0, 0);
   makeStars();
   buildRunBg();
+  buildIntroBg();
 }
 
 const rect = (x, y, w, h, c) => { P.fillStyle = c; P.fillRect(Math.round(x), Math.round(y), w, h); };
@@ -167,7 +168,7 @@ function quantize() {
 }
 
 /* ---------- UI text (crisp pixel font on hi-res overlay) ---------- */
-function uiText(txt, x, y, fs, color, align = 'center') {
+function uiText(txt, x, y, fs, color, align = 'center', shadow = true) {
   U.font = `${fs}px "Press Start 2P", monospace`;
   U.textBaseline = 'top';
   const w = U.measureText(txt).width;
@@ -175,7 +176,7 @@ function uiText(txt, x, y, fs, color, align = 'center') {
   lx = Math.max(8, Math.min(innerWidth - 8 - w, lx));
   U.textAlign = 'left';
   const o = Math.max(2, Math.round(fs / 8));
-  U.fillStyle = '#120a1a'; U.fillText(txt, lx + o, y + o);
+  if (shadow) { U.fillStyle = '#120a1a'; U.fillText(txt, lx + o, y + o); }
   U.fillStyle = color; U.fillText(txt, lx, y);
 }
 const labelSize = () => (S >= 4 ? 16 : 8);
@@ -334,6 +335,7 @@ function drawBoy(ox, oy, pose, f, withArms = true) {
   if (pose === 'idle') { bob = f ? -1 : 0; }
   else if (pose === 'open') { armL = 215; armR = 325; bob = f ? -1 : 0; }
   else if (pose === 'hug') { armL = 172; armR = 178; }
+  else if (pose === 'phone') { armL = 40; armR = 140; }
   oy += bob;
   const R = (x, y, w, h, c) => rect(ox + x, oy + y, w, h, c);
   if (pose === 'idle') limb(ox + 19, oy + 17, armR, 7, 3, [[2, B.tee], [99, B.skin]]);
@@ -394,6 +396,170 @@ function gradient(cx, cy, r, stops) {
 }
 const OCEAN = [[0, '#8cc4ff'], [0.3, '#3478d9'], [0.7, '#16409a'], [1, '#0e2a66']];
 const LAND  = [[0, '#b5ef8a'], [0.3, '#86d96a'], [0.55, '#5cbf4f'], [0.8, '#3f9e45'], [1, '#2f7d3a']];
+
+/* =========================================================
+   INTRO 1 — HIS PHONE BUZZES (his room in Brighton, late at night)
+   ========================================================= */
+let introBg = null, floorY = 0;
+const MOON = [".YY..", "YY...", "YY...", "YY...", ".YY.."];
+function buildIntroBg() {
+  const W = VW, H = VH, r = rng(3);
+  floorY = Math.round(H * 0.8);
+  introBg = layer(() => {
+    // wall with a little dotted wallpaper, skirting board and wooden floor
+    rect(0, 0, W, floorY, '#2a2342');
+    for (let y = 4; y < floorY; y += 8) for (let x = ((y / 8) % 2) * 4; x < W; x += 8) rect(x, y, 1, 1, '#3a3158');
+    rect(0, floorY - 3, W, 3, '#4a3d63');
+    rect(0, floorY, W, H - floorY, '#3b2e48');
+    for (let x = 0; x < W; x += 16) rect(x, floorY, 1, H - floorY, '#33283f');
+    // window: night sea, moon and the i360
+    const ww = Math.min(70, Math.round(W * 0.34)), wh = Math.round(floorY * 0.5);
+    const wx = Math.round(W * 0.08), wy = Math.round(floorY * 0.18), sea = Math.round(wh * 0.62);
+    rect(wx - 3, wy - 3, ww + 6, wh + 6, K); rect(wx - 2, wy - 2, ww + 4, wh + 4, '#6b5a80');
+    rect(wx, wy, ww, sea, '#141a3e'); rect(wx, wy + sea, ww, wh - sea, '#1d2c5a');
+    for (let i = 0; i < ww * wh / 60; i++) rect(wx + Math.floor(r() * ww), wy + Math.floor(r() * sea * 0.9), 1, 1, r() < 0.5 ? '#ffffff' : '#6b74b8');
+    const mx = wx + ww - 12, my = wy + 5;
+    drawMap(MOON, { Y: '#fff3c4' }, mx, my);
+    for (let y = wy + sea + 2; y < wy + wh; y += 2) rect(mx - 1 + ((y >> 1) % 2), y, 3, 1, '#c9d6ff');
+    const tx = wx + Math.round(ww * 0.3), pod = wy + Math.round(wh * 0.4);
+    rect(tx, wy + 3, 2, wh - 3, '#4a5278');
+    rect(tx - 6, pod, 14, 2, '#7d8ac0'); rect(tx - 5, pod + 2, 12, 1, '#4a5278');
+    rect(wx + Math.round(ww / 2) - 1, wy, 2, wh, '#6b5a80'); rect(wx, wy + Math.round(wh / 2) - 1, ww, 2, '#6b5a80');
+    rect(wx - 5, wy + wh + 3, ww + 10, 3, '#8a7aa0');
+    // a heart poster on the wall
+    const px = Math.round(W * 0.82) - 10, py = Math.round(floorY * 0.25);
+    rect(px - 1, py - 1, 22, 20, K); rect(px, py, 20, 18, '#f4e9f0'); drawMap(HEART, HEART_C, px + 6, py + 5);
+  });
+}
+
+const T_NOTIFY = 3600;
+function sceneNotify(t, dt) {
+  P.drawImage(introBg, 0, 0);
+  const feet = floorY + 1, bx = Math.round(VW * 0.55) - 12, by = feet - 37;
+  const buzzing = t > 700;
+  const jit = buzzing && Math.floor(t / 70) % 2 ? 1 : 0;
+  drawBoy(bx, by, 'phone', 0);
+  // the phone in his hands, buzzing and lighting up
+  const phx = bx + 10 + jit, phy = by + 18;
+  rect(phx - 1, phy - 1, 6, 8, K);
+  rect(phx, phy, 4, 6, buzzing ? (Math.floor(t / 250) % 2 ? '#9fd8ff' : '#ffffff') : '#30303b');
+  rect(bx + 9, by + 21, 2, 2, B.skin); rect(bx + 14, by + 21, 2, 2, B.skin);
+  if (buzzing && Math.floor(t / 140) % 2) {
+    rect(phx - 4, phy + 1, 1, 4, '#ffffff'); rect(phx + 7, phy + 1, 1, 4, '#ffffff');
+    rect(phx - 6, phy, 1, 6, '#9fd8ff'); rect(phx + 9, phy, 1, 6, '#9fd8ff');
+  }
+  // pop-up bubble above his head with a little heart
+  if (t > 900) {
+    const bob = Math.round(Math.sin(t / 200));
+    const ux = bx + 6, uy = by - 17 + bob;
+    rect(ux - 1, uy - 1, 15, 12, K); rect(ux, uy, 13, 10, '#ffffff');
+    rect(ux + 3, uy + 11, 3, 1, K); rect(ux + 4, uy + 10, 2, 1, '#ffffff');
+    drawMap(HEART_SM, HEART_SM_C, ux + 4, uy + 3);
+  }
+  if (buzzing && !scn.buzzText) { scn.buzzText = true; setTop('BZZ... BZZ...', 'whitetext'); }
+  uiText(CONFIG.boyName, (bx + 12) * S, (feet + 4) * S, smallSize(), '#d8ecff');
+  if (t > T_NOTIFY) goTo('phone');
+}
+
+/* =========================================================
+   INTRO 2 — HE OPENS HER MESSAGE: "I miss U"
+   ========================================================= */
+const FINGER = [
+  "..KK.....",
+  ".KSSK....",
+  ".KSSK....",
+  ".KSSKKK..",
+  ".KSSSSSKK",
+  "KKSSSSSSK",
+  "KSSSSSSSK",
+  "KSSSSSSSK",
+  ".KSSSSSK.",
+  "..KSSSK..",
+];
+const T_PHONE = { card: 500, finger: 1700, tap: 2150, chat: 2500, typing: 2500, msg: 3700, end: 6800 };
+function scenePhone(t, dt) {
+  const W = VW, H = VH;
+  rect(0, 0, W, H, '#120d22');
+  drawStars(t);
+  const ph = Math.round(Math.min(H * 0.86, W * 1.5)), pw = Math.round(ph * 0.52);
+  const buzz = t > T_PHONE.card && t < T_PHONE.card + 700 && Math.floor(t / 60) % 2 ? 1 : 0;
+  const x0 = Math.round((W - pw) / 2) + buzz, y0 = Math.round((H - ph) / 2);
+  // phone body
+  rect(x0 - 1, y0 + 2, pw + 2, ph - 4, K); rect(x0 + 2, y0 - 1, pw - 4, ph + 2, K);
+  rect(x0, y0, pw, ph, '#2a2a35'); rect(x0 + 2, y0 + 1, pw - 4, 1, '#45455a');
+  const sx = x0 + 3, sy = y0 + 8, sw = pw - 6, sh = ph - 16;
+  rect(x0 + Math.round(pw / 2) - 6, y0 + 3, 12, 2, '#111116');
+  rect(x0 + Math.round(pw / 2) - 8, y0 + ph - 5, 16, 1, '#55556a');
+  const big = S >= 4 ? 24 : 16, mid = S >= 4 ? 16 : S >= 3 ? 12 : 8;
+
+  if (t < T_PHONE.chat) {
+    // lock screen wallpaper (dithered purple → pink)
+    const cols = ['#2b2160', '#43307e', '#6a3f98', '#9a52a8', '#c86aa8'];
+    for (let y = 0; y < sh; y++) for (let x = 0; x < sw; x++) {
+      const v = y / sh * (cols.length - 1), i = Math.floor(v);
+      const c = cols[Math.min(cols.length - 1, i + ((v - i) * 16 > BAYER[(y & 3) * 4 + (x & 3)] ? 1 : 0))];
+      P.fillStyle = c; P.fillRect(sx + x, sy + y, 1, 1);
+    }
+    drawMap(HEART, { K: '#6a3f98', R: '#9a52a8', W: '#c86aa8' }, sx + sw / 2 - 9, sy + sh * 0.68, 2);
+    const now = new Date(), hh = String(now.getHours()).padStart(2, '0'), mm = String(now.getMinutes()).padStart(2, '0');
+    uiText(`${hh}:${mm}`, (sx + sw / 2) * S, (sy + 6) * S, big + 8, '#ffffff');
+    // notification card slides in
+    if (t > T_PHONE.card) {
+      const k = clamp01((t - T_PHONE.card) / 300);
+      const cx = sx + 3, cw = sw - 6, ch = 20, cy = Math.round(sy + 34 - 12 * (1 - d3.easeBackOut(k)));
+      const tapped = t > T_PHONE.tap;
+      rect(cx + 1, cy - 1, cw - 2, ch + 2, '#d9cfe8'); rect(cx - 1, cy + 1, cw + 2, ch - 2, '#d9cfe8');
+      rect(cx, cy, cw, ch, tapped ? '#ffe3ee' : '#f6f2fb');
+      rect(cx + 3, cy + 4, 11, 11, '#ff6f91'); drawMap(HEART_SM, { R: '#ffffff' }, cx + 6, cy + 8);
+      uiText(CONFIG.girlName, (cx + 17) * S, (cy + 3) * S, mid, '#2a2342', 'left', false);
+      uiText('1 new message', (cx + 17) * S, (cy + 3) * S + mid * 1.6, Math.max(8, mid - 4), '#6b6480', 'left', false);
+      uiText('now', (cx + cw - 3) * S, (cy + 3) * S, 8, '#8a83a0', 'right', false);
+      // his finger taps it
+      if (t > T_PHONE.finger) {
+        const fk = clamp01((t - T_PHONE.finger) / (T_PHONE.tap - T_PHONE.finger));
+        const tx = cx + cw / 2, ty = cy + ch / 2;
+        const fx = tx + (1 - d3.easeCubicOut(fk)) * pw * 0.6, fy = ty + (1 - d3.easeCubicOut(fk)) * ph * 0.5;
+        if (tapped) circle(tx, ty, 2 + Math.floor((t - T_PHONE.tap) / 40), '#ff6f91');
+        drawMap(FINGER, { K, S: B.skin }, fx - 2, fy + (tapped ? 1 : 0));
+      }
+    }
+  } else {
+    // chat screen
+    rect(sx, sy, sw, sh, '#fbeff5');
+    for (let y = sy + 20; y < sy + sh; y += 7) for (let x = sx + 3 + (((y - sy) / 7) % 2) * 3; x < sx + sw; x += 6) rect(x, y, 1, 1, '#f1d9e6');
+    rect(sx, sy, sw, 17, '#ff6f91'); rect(sx, sy + 17, sw, 1, '#e0436f');
+    drawMap(GIRL_HEAD, GC, sx + 3, sy + 1);
+    uiText(CONFIG.girlName, (sx + 22) * S, (sy + 3) * S, mid, '#ffffff', 'left', false);
+    uiText('online', (sx + 22) * S, (sy + 3) * S + mid * 1.6, 8, '#ffe3ee', 'left', false);
+    const bx = sx + 4, by = sy + 26;
+    if (t < T_PHONE.msg) {
+      // "typing..." bubble
+      rect(bx, by, 22, 11, '#e7d3e0'); rect(bx + 1, by + 1, 20, 9, '#ffffff');
+      for (let i = 0; i < 3; i++) rect(bx + 5 + i * 5, by + 4 + (Math.floor(t / 150) % 3 === i ? -1 : 0), 2, 2, '#b9a6c4');
+    } else {
+      // her message
+      U.font = `${big}px "Press Start 2P", monospace`;
+      const msg = 'I miss U';
+      const tw = Math.ceil(U.measureText(msg).width / S), bw = tw + 10, bh = Math.ceil(big / S) + 8;
+      const pop = t - T_PHONE.msg < 120 ? 0.6 : 1;
+      const w2 = Math.round(bw * pop), h2 = Math.round(bh * pop);
+      rect(bx + 1, by - 1, w2 - 2, h2 + 2, '#ff6f91'); rect(bx - 1, by + 1, w2 + 2, h2 - 2, '#ff6f91');
+      rect(bx, by, w2, h2, '#ffd3df'); rect(bx - 2, by + h2 - 3, 3, 3, '#ff6f91');
+      if (pop === 1) {
+        uiText(msg, (bx + 5) * S, (by + 4) * S, big, '#5a1030', 'left', false);
+        drawMap(HEART, HEART_C, bx + bw + 3, by + bh / 2 - 4 + Math.round(Math.sin(t / 200)));
+        uiText('now', (bx + 1) * S, (by + bh + 3) * S, 8, '#b28aa2', 'left', false);
+      }
+      if (!scn.burst) {
+        scn.burst = true;
+        for (let i = 0; i < 10; i++) parts.push({ x: bx + bw * Math.random(), y: by, vx: (Math.random() - 0.5) * 0.04,
+          vy: -0.02 - Math.random() * 0.03, life: 1800 + i * 80, max: 2600, big: i % 3 === 0 });
+      }
+    }
+  }
+  drawParts(dt);
+  if (t > T_PHONE.end) goTo('globe');
+}
 
 /* =========================================================
    SCENE 1 — THE GLOBE
@@ -812,9 +978,9 @@ function drawParts(dt) {
 /* =========================================================
    SCENE MANAGER (with 16-bit dissolve transition)
    ========================================================= */
-const SCENES = { globe: sceneGlobe, walk: sceneWalk, run: sceneRun };
-const NEXT = { globe: 'walk', walk: 'run' };
-let scene = 'globe', sceneT0 = null, trans = null, last = null, scn = {};
+const SCENES = { notify: sceneNotify, phone: scenePhone, globe: sceneGlobe, walk: sceneWalk, run: sceneRun };
+const NEXT = { notify: 'phone', phone: 'globe', globe: 'walk', walk: 'run' };
+let scene = 'notify', sceneT0 = null, trans = null, last = null, scn = {};
 
 const $ = id => document.getElementById(id);
 function show(id, on) { $(id).classList.toggle('off', !on); }
@@ -844,7 +1010,7 @@ function mask(frac) {
     if ((BAYER[((y / c) & 3) * 4 + ((x / c) & 3)] + 0.5) / 16 < frac) P.fillRect(x, y, c, c);
 }
 function loop(now) {
-  if (last === null) { last = now; enterScene('globe', now); }
+  if (last === null) { last = now; enterScene('notify', now); }
   const dt = Math.min(50, now - last); last = now;
   U.clearRect(0, 0, innerWidth, innerHeight);
   let frac = 0;
@@ -864,7 +1030,7 @@ function loop(now) {
 }
 
 $('skip').onclick = () => NEXT[scene] && goTo(NEXT[scene]);
-$('replay').onclick = () => goTo('globe');
+$('replay').onclick = () => goTo('notify');
 $('bannerText').textContent = CONFIG.finalMessage.toUpperCase();
 addEventListener('resize', setup);
 setup();
