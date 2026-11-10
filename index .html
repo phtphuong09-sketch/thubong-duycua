@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Across the World</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0b0f2a; }
+  body { font-family: 'Press Start 2P', monospace; color: #fff; }
+
+  #px { position: fixed; left: 0; top: 0; image-rendering: crisp-edges; image-rendering: pixelated; }
+  #ui { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+  .text { position: fixed; left: 0; right: 0; text-align: center; padding: 0 16px; line-height: 1.7;
+          pointer-events: none; transition: opacity .4s steps(4); }
+  .off { opacity: 0; }
+  #topText { top: 6vh; font-size: clamp(12px, 2.6vw, 26px); }
+  #bottomText { bottom: 7vh; font-size: clamp(9px, 1.7vw, 16px); text-shadow: 2px 2px 0 #000; }
+  #bottomText .gold { color: #ffd23f; }
+
+  .goldtext {
+    display: inline-block;
+    background: linear-gradient(#fff3a0 0%, #ffd34d 45%, #ff9a1f 56%, #ff7a00 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(2px 0 0 #5a1e00) drop-shadow(-2px 0 0 #5a1e00) drop-shadow(0 2px 0 #5a1e00)
+            drop-shadow(0 -2px 0 #5a1e00) drop-shadow(0 4px 0 #1a1030);
+  }
+  .whitetext { color: #fff; text-shadow: 3px 3px 0 #1a1030; }
+
+  /* LEVEL-UP style banner */
+  #banner {
+    position: fixed; left: 50%; top: 11%; max-width: 92vw; text-align: center;
+    padding: 18px 22px; background: #2c3566; font-size: clamp(11px, 3vw, 32px); line-height: 1.5;
+    box-shadow: 0 -4px 0 0 #141a3a, 0 4px 0 0 #141a3a, -4px 0 0 0 #141a3a, 4px 0 0 0 #141a3a,
+                inset 0 4px 0 0 #46518f, inset 0 -5px 0 0 #1d2448;
+    transform: translate(-50%, 0) scale(0); transition: transform .45s steps(5); pointer-events: none;
+  }
+  #banner.show { transform: translate(-50%, 0) scale(1); }
+
+  .pxbtn {
+    position: fixed; font-family: inherit; cursor: pointer; border: none; background: #fff; color: #e0436f;
+    box-shadow: 0 -3px 0 0 #141a3a, 0 3px 0 0 #141a3a, -3px 0 0 0 #141a3a, 3px 0 0 0 #141a3a, inset 0 -4px 0 0 #ffc2d1;
+    transition: opacity .4s steps(4);
+  }
+  #replay { left: 50%; bottom: 5%; transform: translateX(-50%); padding: 12px 18px; font-size: 12px; }
+  #replay:active { transform: translate(-50%, 2px); }
+  #skip { right: 16px; bottom: 16px; padding: 8px 12px; font-size: 10px; background: #2c3566; color: #fff;
+          box-shadow: 0 -3px 0 0 #141a3a, 0 3px 0 0 #141a3a, -3px 0 0 0 #141a3a, 3px 0 0 0 #141a3a, inset 0 3px 0 0 #46518f; }
+  #skip:active { transform: translateY(2px); }
+  .pxbtn.off { opacity: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+<canvas id="px"></canvas>
+<canvas id="ui"></canvas>
+<div id="topText" class="text off"></div>
+<div id="bottomText" class="text off"></div>
+<div id="banner"><span class="goldtext" id="bannerText"></span></div>
+<button id="replay" class="pxbtn off">&#9654; REPLAY</button>
+<button id="skip" class="pxbtn">SKIP &#9654;</button>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+<script>
+/* =========================================================
+   ✏️  PERSONALISE HERE
+   ========================================================= */
+const CONFIG = {
+  girlName: "thubong",
+  boyName:  "duycua",
+  girlCountry: "VN",                  // "VN" or "UK" – where she is
+  boyCountry:  "UK",                  // where he is
+  title: "Two hearts, one world",
+  walkText: "On my way to you...",
+  reunionText: "Brighton, where it all began",
+  finalMessage: "No distance is too far",
+};
+/* ========================================================= */
+
+const PLACES = {
+  VN: { name: "VIETNAM",        id: "704", coord: [105.85, 21.03],  city: "HA NOI",   sign: "VIETNAM" },
+  UK: { name: "UNITED KINGDOM", id: "826", coord: [-0.1372, 50.8225], city: "BRIGHTON", sign: "BRIGHTON" },
+};
+const girlPlace = PLACES[CONFIG.girlCountry];
+const boyPlace  = PLACES[CONFIG.boyCountry];
+const distanceKm = Math.round(d3.geoDistance(girlPlace.coord, boyPlace.coord) * 6371);
+
+/* =========================================================
+   PIXEL CANVAS
+   ========================================================= */
+const pxCanvas = document.getElementById('px');
+let P = pxCanvas.getContext('2d', { willReadFrequently: true });
+const uiCanvas = document.getElementById('ui');
+const U = uiCanvas.getContext('2d');
+const DPR = Math.min(2, window.devicePixelRatio || 1);
+let S, VW, VH;
+const BG = '#0b0f2a';
+const K = '#24151a';
+
+function setup() {
+  S = Math.max(2, Math.floor(Math.min(innerWidth / 120, innerHeight / 170)));
+  VW = Math.ceil(innerWidth / S); VH = Math.ceil(innerHeight / S);
+  pxCanvas.width = VW; pxCanvas.height = VH;
+  pxCanvas.style.width = VW * S + 'px'; pxCanvas.style.height = VH * S + 'px';
+  uiCanvas.width = innerWidth * DPR; uiCanvas.height = innerHeight * DPR;
+  U.setTransform(DPR, 0, 0, DPR, 0, 0);
+  makeStars();
+  buildRunBg();
+  buildIntroBg();
+}
+
+const rect = (x, y, w, h, c) => { P.fillStyle = c; P.fillRect(Math.round(x), Math.round(y), w, h); };
+function drawMap(map, colors, ox, oy, sc = 1) {
+  ox = Math.round(ox); oy = Math.round(oy);
+  for (let j = 0; j < map.length; j++) {
+    const row = map[j];
+    for (let i = 0; i < row.length; i++) {
+      const ch = row[i];
+      if (ch === '.') continue;
+      P.fillStyle = colors[ch];
+      P.fillRect(ox + i * sc, oy + j * sc, sc, sc);
+    }
+  }
+}
+function circle(cx, cy, r, c) {
+  cx = Math.round(cx); cy = Math.round(cy);
+  let x = r, y = 0, e = 1 - r;
+  P.fillStyle = c;
+  while (x >= y) {
+    for (const [a, b] of [[x, y], [y, x], [-y, x], [-x, y], [-x, -y], [-y, -x], [y, -x], [x, -y]]) P.fillRect(cx + a, cy + b, 1, 1);
+    y++;
+    if (e < 0) e += 2 * y + 1; else { x--; e += 2 * (y - x) + 1; }
+  }
+}
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const clamp01 = v => Math.max(0, Math.min(1, v));
+
+/* ---------- 16-bit colour quantise + ordered dithering ---------- */
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+const PAL = ['#0b0f2a', '#141a45', '#1f2a66', '#2e3f8c', '#6b74b8', '#ffffff',
+  '#0e2a66', '#16409a', '#2259bf', '#3478d9', '#5a9df0', '#8cc4ff', '#9fd8ff',
+  '#2f7d3a', '#3f9e45', '#5cbf4f', '#86d96a', '#b5ef8a',
+  '#e0436f', '#ff6f91', '#ffb3c8', '#ffd23f']
+  .map(h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]);
+let qcache = new Map();
+function quantize() {
+  const img = P.getImageData(0, 0, VW, VH), d = img.data;
+  if (qcache.size > 300000) qcache = new Map();
+  for (let y = 0; y < VH; y++) for (let x = 0; x < VW; x++) {
+    const i = (y * VW + x) * 4, bi = BAYER[(y & 3) * 4 + (x & 3)];
+    const key = (((d[i] >> 2) << 12) | ((d[i + 1] >> 2) << 6) | (d[i + 2] >> 2)) * 16 + bi;
+    let c = qcache.get(key);
+    if (c === undefined) {
+      const off = (bi - 7.5) * 3, r = d[i] + off, g = d[i + 1] + off, b = d[i + 2] + off;
+      let bd = 1e9; c = 0;
+      for (let k = 0; k < PAL.length; k++) {
+        const p = PAL[k], dd = (r - p[0]) ** 2 + (g - p[1]) ** 2 + (b - p[2]) ** 2;
+        if (dd < bd) { bd = dd; c = k; }
+      }
+      qcache.set(key, c);
+    }
+    const p = PAL[c]; d[i] = p[0]; d[i + 1] = p[1]; d[i + 2] = p[2];
+  }
+  P.putImageData(img, 0, 0);
+}
+
+/* ---------- UI text (crisp pixel font on hi-res overlay) ---------- */
+function uiText(txt, x, y, fs, color, align = 'center', shadow = true) {
+  U.font = `${fs}px "Press Start 2P", monospace`;
+  U.textBaseline = 'top';
+  const w = U.measureText(txt).width;
+  let lx = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
+  lx = Math.max(8, Math.min(innerWidth - 8 - w, lx));
+  U.textAlign = 'left';
+  const o = Math.max(2, Math.round(fs / 8));
+  if (shadow) { U.fillStyle = '#120a1a'; U.fillText(txt, lx + o, y + o); }
+  U.fillStyle = color; U.fillText(txt, lx, y);
+}
+const labelSize = () => (S >= 4 ? 16 : 8);
+const smallSize = () => (S >= 4 ? 12 : 8);
+
+/* =========================================================
+   SPRITES
+   ========================================================= */
+const HEART = [
+  ".KK...KK.",
+  "KRRK.KRRK",
+  "KRWRKRRRK",
+  "KRRRRRRRK",
+  ".KRRRRRK.",
+  "..KRRRK..",
+  "...KRK...",
+  "....K....",
+];
+const HEART_C = { K: '#6a0d2b', R: '#ff4d7d', W: '#ffd3df' };
+const HEART_SM = [".R.R.", "RRRRR", ".RRR.", "..R.."];
+const HEART_SM_C = { R: '#ff4d7d' };
+const SPARK_BIG = ["..Y..", "..Y..", "YYWYY", "..Y..", "..Y.."];
+const SPARK_SM = [".Y.", "YWY", ".Y."];
+const SPARK_C = { Y: '#fff1a8', W: '#ffffff' };
+const CLOUD = [
+  "....WWWW........",
+  "..WWWWWWWW.WWW..",
+  ".WWWWWWWWWWWWWW.",
+  "WWWWWWWWWWWWWWWW",
+  "SSWWWWWWWWWWWWSS",
+  "..SSSSSSSSSSSS..",
+];
+const CLOUD_C = { W: '#f4fbff', S: '#bfe3ee' };
+
+/* --- Girl: long brown hair, see-through bangs, ^^ smile, beige jacket, blue top, navy jeans, black bag + bear --- */
+const GIRL_HEAD = [
+  "....KKKKKKKK....",
+  "..KKHHHHHHHHKK..",
+  ".KHHHLLLHHHHHHK.",
+  ".KHHLLHHHHHHHHK.",
+  "KHHHHHHHHHHHHHHK",
+  "KHHHHhHHHHhHHHHK",
+  "KHHhSShSSSShSHHK",
+  "KHHSSSSSSSSSSSHK",
+  "KHSSSKSSSSKSSSHK",
+  "KHSSKSKSSKSKSSHK",
+  "KHBBSSSSSSSSBBHK",
+  "KHSSSSKWWKSSSSHK",
+  "KHHSSSSKKSSSSHHK",
+  "KHHHSSSSSSSSHHHK",
+  "KHHHHKKSSKKHHHHK",
+].map((r, i) => i >= 4 ? 'H' + r.slice(1, -1) + 'H' : r);
+// same head, but eyes + smile turned toward the right (the way she walks)
+const GIRL_HEAD_R = GIRL_HEAD.map((r, i) => {
+  const turned = { 8: "KHSSSSKSSSSKSSHK", 9: "KHSSSKSKSSKSKSHK", 10: "KHSBBSSSSSSSBBHK",
+                   11: "KHSSSSSKWWKSSSHK", 12: "KHHSSSSSKKSSSHHK" }[i];
+  return turned ? 'H' + turned.slice(1, -1) + 'H' : r;
+});
+const GC = { K, H: '#6b4530', h: '#4d3020', L: '#94684a', S: '#ffd9bf', s: '#f0b896', B: '#ff9aaa', W: '#ffffff' };
+const G = { skin: '#ffd9bf', skinS: '#f0b896', hair: '#6b4530', dress: '#2b2b36', dressS: '#1d1d26', dressL: '#4a4a5e',
+            shoe: '#2b2b36' };
+
+/* --- Boy: messy black hair, black glasses, earring, all-black outfit, silver chain, watch, Rick Owens high-tops --- */
+const BOY_HEAD = [
+  "...KK..KK..KK...",
+  "..KHHKKHHKKHHK..",
+  ".KHHHHHHLHHHHHK.",
+  "KHHHLLHHHHHHHHHK",
+  "KHHHHHHHHHHHHHHK",
+  "KHHSHHHSHHHHSHHK",
+  "KHSSSHSSSSHSSSHK",
+  "KSGGGGGSSGGGGGSK",
+  "KSGgKgGGGGgKgGSK",
+  "KSGGGGGSSGGGGGSK",
+  "KSBSSSSSSSSSSBSK",
+  "KSSSSSKKKKSSSSSE",
+  "KsSSSSSSSSSSSSsK",
+  ".KsSSSSSSSSSSsK.",
+  "..KKsSSSSSSsKK..",
+];
+const BC = { K, H: '#1c1c22', L: '#3d3d4a', S: '#f2cfae', s: '#dcae8a', G: '#111111', g: '#d8ecff', B: '#f7b0a8', E: '#e3e7ee' };
+const B = { skin: '#f2cfae', skinS: '#dcae8a', tee: '#2c2c36', teeS: '#1f1f28', teeL: '#45455a', pants: '#30303b', pantsS: '#24242d',
+            chain: '#e3e7ee', watch: '#c8ccd4' };
+
+function limb(cx, cy, ang, len, w, segs, shoe = 0, shoeColor = '#f4f4f4') {
+  const a = ang * Math.PI / 180, dx = Math.cos(a), dy = Math.sin(a);
+  const pts = [];
+  for (let t = 0; t <= len; t++) pts.push([Math.round(cx + dx * t - w / 2), Math.round(cy + dy * t - w / 2), t]);
+  P.fillStyle = K;
+  for (const [x, y] of pts) P.fillRect(x - 1, y - 1, w + 2, w + 2);
+  const [ex, ey] = pts[pts.length - 1];
+  if (shoe === 'rick') P.fillRect(ex - 3, ey + w - 4, w + 5, 7);
+  else if (shoe) P.fillRect(shoe > 0 ? ex - 1 : ex - 2, ey + w - 1, w + 3, 4);
+  for (const [x, y, t] of pts) { P.fillStyle = segs.find(s => t <= s[0])[1]; P.fillRect(x, y, w, w); }
+  if (shoe === 'rick') {
+    // Rick Owens Geobasket-style: tall black high-top, chunky white sole, white toe cap
+    rect(ex - 2, ey + w - 3, w + 3, 3, '#141418');
+    rect(ex - 1, ey + w - 3, 1, 3, '#4a4a58'); rect(ex + 1, ey + w - 3, 2, 1, '#4a4a58');
+    rect(ex - 2, ey + w - 1, 2, 1, '#f4f4f4');
+    rect(ex - 2, ey + w, w + 3, 2, '#f4f4f4'); rect(ex - 2, ey + w + 1, w + 3, 1, '#d6d6dc');
+  } else if (shoe) rect(shoe > 0 ? ex : ex - 1, ey + w, w + 1, 2, shoeColor);
+}
+
+// Girl sprite box: 24 x 34, facing right
+function drawGirl(ox, oy, pose, f) {
+  let bob = 0, legA = 90, legB = 90, armL = 96, armR = 84, lean = 0;
+  if (pose === 'walk') {
+    // natural gait: each arm swings opposite to the leg on its side (angles < 90 point forward = right)
+    const ph = [1, 0, -1, 0][f % 4];
+    legA = 90 - 28 * ph; legB = 90 + 28 * ph; armL = 90 - 40 * ph; armR = 90 + 40 * ph;
+    bob = f % 2 ? -1 : 0; lean = 1;
+  } else if (pose === 'idle') {
+    armL = f ? 98 : 95; armR = f ? 82 : 85;
+  } else if (pose === 'hug') {
+    armL = 12; armR = 2; lean = 1;
+  }
+  oy += bob;
+  const R = (x, y, w, h, c) => rect(ox + x, oy + y, w, h, c);
+  // long hair behind
+  if (pose === 'walk') {   // hair streaming out behind her
+    const fl = f % 2;
+    R(0, 7 + fl, 4, 12 - fl, K); R(1, 8 + fl, 3, 10 - fl, G.hair); R(1, 13 + fl, 1, 3, '#4d3020');
+  }
+  R(3, 4, 18, 20, K); R(4, 4, 16, 19, G.hair); R(4, 19, 1, 3, '#4d3020'); R(19, 19, 1, 3, '#4d3020');
+  // back arm
+  limb(ox + 7, oy + 17, armL, 5, 2, [[99, G.skin]]);
+  // bare legs + black shoes
+  limb(ox + 10, oy + 25, legB, 4, 3, [[99, G.skinS]], 1, G.shoe);
+  limb(ox + 14, oy + 25, legA, 4, 3, [[99, G.skin]], 1, G.shoe);
+  // black mini dress: fitted bodice with thin straps, flared short skirt
+  R(6, 15, 12, 8, K);
+  R(7, 16, 10, 7, G.dress); R(16, 16, 1, 7, G.dressS);
+  R(7, 16, 10, 1, G.skin); R(8, 16, 1, 1, G.dress); R(15, 16, 1, 1, G.dress);
+  R(10, 17, 4, 1, G.skin); R(11, 15, 2, 1, G.skin);
+  R(8, 18, 1, 3, G.dressL);
+  R(5, 22, 14, 5, K);
+  R(6, 22, 12, 4, G.dress); R(16, 22, 2, 4, G.dressS); R(7, 22, 1, 3, G.dressL);
+  R(6, 25, 12, 1, G.dressS); R(9, 23, 1, 2, G.dressS); R(13, 23, 1, 2, G.dressS);
+  // head
+  drawMap(lean ? GIRL_HEAD_R : GIRL_HEAD, GC, ox + 4 + lean, oy);
+  // black shoulder bag + little white bear
+  R(9, 15, 1, 1, '#1a1a1f'); R(8, 16, 1, 2, '#1a1a1f'); R(7, 18, 1, 1, '#1a1a1f');
+  R(2, 18, 5, 5, K); R(3, 19, 3, 3, '#1f1f26'); R(5, 19, 1, 1, '#c9a14a');
+  R(1, 22, 1, 1, '#f4f1ea'); R(3, 22, 1, 1, '#f4f1ea'); R(1, 23, 3, 3, '#f4f1ea'); R(2, 24, 1, 1, K);
+  // front arm
+  limb(ox + 17, oy + 17, armR, 5, 2, [[99, G.skin]]);
+}
+
+// Boy sprite box: 24 x 38, facing left
+function boyArms(ox, oy, armL, armR) {
+  limb(ox + 5, oy + 17, armL, 7, 3, [[2, B.tee], [5, B.skin], [6, B.watch], [99, B.skin]]);
+  limb(ox + 19, oy + 17, armR, 7, 3, [[2, B.tee], [99, B.skin]]);
+}
+function drawBoy(ox, oy, pose, f, withArms = true) {
+  let armL = 100, armR = 80, bob = 0;
+  if (pose === 'idle') { bob = f ? -1 : 0; }
+  else if (pose === 'open') { armL = 215; armR = 325; bob = f ? -1 : 0; }
+  else if (pose === 'hug') { armL = 172; armR = 178; }
+  else if (pose === 'phone') { armL = 40; armR = 140; }
+  oy += bob;
+  const R = (x, y, w, h, c) => rect(ox + x, oy + y, w, h, c);
+  if (pose === 'idle') limb(ox + 19, oy + 17, armR, 7, 3, [[2, B.tee], [99, B.skin]]);
+  limb(ox + 10, oy + 29, 90, 3, 5, [[99, B.pantsS]], 'rick');
+  limb(ox + 15, oy + 29, 90, 3, 5, [[99, B.pants]], 'rick');
+  // oversized tee
+  R(4, 15, 16, 13, K);
+  R(5, 16, 14, 11, B.tee); R(17, 16, 2, 11, B.teeS); R(5, 26, 14, 1, B.teeS);
+  R(6, 17, 1, 8, B.teeL); R(10, 15, 4, 1, B.skinS); R(9, 16, 6, 1, '#1a1a22');
+  // silver chain + square pendant
+  for (const [x, y] of [[9, 17], [10, 18], [11, 19], [14, 17], [13, 18], [12, 19]]) R(x, y, 1, 1, B.chain);
+  R(11, 20, 2, 2, '#f7f7f7'); R(12, 21, 1, 1, '#555');
+  drawMap(BOY_HEAD, BC, ox + 4, oy);
+  if (withArms) {
+    if (pose === 'idle') limb(ox + 5, oy + 17, armL, 7, 3, [[2, B.tee], [5, B.skin], [6, B.watch], [99, B.skin]]);
+    else boyArms(ox, oy, armL, armR);
+  }
+}
+
+/* =========================================================
+   STARS
+   ========================================================= */
+let stars = [];
+function makeStars() {
+  const r = rng(7);
+  stars = Array.from({ length: Math.round(VW * VH / 110) }, () => ({
+    x: Math.floor(r() * VW), y: Math.floor(r() * VH), p: r() * 6.28, big: r() < 0.08,
+  }));
+}
+function drawStars(t) {
+  for (const s of stars) {
+    const tw = Math.sin(t / 500 + s.p);
+    if (s.big && tw > 0.3) drawMap(tw > 0.8 ? SPARK_BIG : SPARK_SM, SPARK_C, s.x - (tw > 0.8 ? 2 : 1), s.y - (tw > 0.8 ? 2 : 1));
+    else rect(s.x, s.y, 1, 1, tw > 0 ? '#ffffff' : '#6b74b8');
+  }
+}
+
+/* =========================================================
+   MAP DATA
+   ========================================================= */
+let land = null, vnShape = null, ukShape = null;
+let PF = null;   // "path frame": the world rotated so her route runs along the equator
+fetch('https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-110m.json')
+  .then(r => r.json())
+  .then(world => {
+    land = topojson.feature(world, world.objects.land);
+    const all = topojson.feature(world, world.objects.countries).features;
+    vnShape = all.find(f => f.id === PLACES.VN.id);
+    ukShape = all.find(f => f.id === PLACES.UK.id);
+    PF = null;
+  })
+  .catch(err => console.warn('Could not load map data', err));
+
+function gradient(cx, cy, r, stops) {
+  const g = P.createRadialGradient(cx, cy, 0, cx, cy, r);
+  stops.forEach(([o, c]) => g.addColorStop(o, c));
+  return g;
+}
+const OCEAN = [[0, '#8cc4ff'], [0.3, '#3478d9'], [0.7, '#16409a'], [1, '#0e2a66']];
+const LAND  = [[0, '#b5ef8a'], [0.3, '#86d96a'], [0.55, '#5cbf4f'], [0.8, '#3f9e45'], [1, '#2f7d3a']];
+
+/* =========================================================
+   INTRO 1 — HIS PHONE BUZZES (his room in Brighton, late at night)
+   ========================================================= */
+let introBg = null, floorY = 0;
+const MOON = [".YY..", "YY...", "YY...", "YY...", ".YY.."];
+function buildIntroBg() {
+  const W = VW, H = VH, r = rng(3);
+  floorY = Math.round(H * 0.8);
+  introBg = layer(() => {
+    // wall with a little dotted wallpaper, skirting board and wooden floor
+    rect(0, 0, W, floorY, '#2a2342');
+    for (let y = 4; y < floorY; y += 8) for (let x = ((y / 8) % 2) * 4; x < W; x += 8) rect(x, y, 1, 1, '#3a3158');
+    rect(0, floorY - 3, W, 3, '#4a3d63');
+    rect(0, floorY, W, H - floorY, '#3b2e48');
+    for (let x = 0; x < W; x += 16) rect(x, floorY, 1, H - floorY, '#33283f');
+    // window: night sea, moon and the i360
+    const ww = Math.min(70, Math.round(W * 0.34)), wh = Math.round(floorY * 0.5);
+    const wx = Math.round(W * 0.08), wy = Math.round(floorY * 0.18), sea = Math.round(wh * 0.62);
+    rect(wx - 3, wy - 3, ww + 6, wh + 6, K); rect(wx - 2, wy - 2, ww + 4, wh + 4, '#6b5a80');
+    rect(wx, wy, ww, sea, '#141a3e'); rect(wx, wy + sea, ww, wh - sea, '#1d2c5a');
+    for (let i = 0; i < ww * wh / 60; i++) rect(wx + Math.floor(r() * ww), wy + Math.floor(r() * sea * 0.9), 1, 1, r() < 0.5 ? '#ffffff' : '#6b74b8');
+    const mx = wx + ww - 12, my = wy + 5;
+    drawMap(MOON, { Y: '#fff3c4' }, mx, my);
+    for (let y = wy + sea + 2; y < wy + wh; y += 2) rect(mx - 1 + ((y >> 1) % 2), y, 3, 1, '#c9d6ff');
+    const tx = wx + Math.round(ww * 0.3), pod = wy + Math.round(wh * 0.4);
+    rect(tx, wy + 3, 2, wh - 3, '#4a5278');
+    rect(tx - 6, pod, 14, 2, '#7d8ac0'); rect(tx - 5, pod + 2, 12, 1, '#4a5278');
+    rect(wx + Math.round(ww / 2) - 1, wy, 2, wh, '#6b5a80'); rect(wx, wy + Math.round(wh / 2) - 1, ww, 2, '#6b5a80');
+    rect(wx - 5, wy + wh + 3, ww + 10, 3, '#8a7aa0');
+    // a heart poster on the wall
+    const px = Math.round(W * 0.82) - 10, py = Math.round(floorY * 0.25);
+    rect(px - 1, py - 1, 22, 20, K); rect(px, py, 20, 18, '#f4e9f0'); drawMap(HEART, HEART_C, px + 6, py + 5);
+  });
+}
+
+const T_NOTIFY = 3600;
+function sceneNotify(t, dt) {
+  P.drawImage(introBg, 0, 0);
+  const feet = floorY + 1, bx = Math.round(VW * 0.55) - 12, by = feet - 37;
+  const buzzing = t > 700;
+  const jit = buzzing && Math.floor(t / 70) % 2 ? 1 : 0;
+  drawBoy(bx, by, 'phone', 0);
+  // the phone in his hands, buzzing and lighting up
+  const phx = bx + 10 + jit, phy = by + 18;
+  rect(phx - 1, phy - 1, 6, 8, K);
+  rect(phx, phy, 4, 6, buzzing ? (Math.floor(t / 250) % 2 ? '#9fd8ff' : '#ffffff') : '#30303b');
+  rect(bx + 9, by + 21, 2, 2, B.skin); rect(bx + 14, by + 21, 2, 2, B.skin);
+  if (buzzing && Math.floor(t / 140) % 2) {
+    rect(phx - 4, phy + 1, 1, 4, '#ffffff'); rect(phx + 7, phy + 1, 1, 4, '#ffffff');
+    rect(phx - 6, phy, 1, 6, '#9fd8ff'); rect(phx + 9, phy, 1, 6, '#9fd8ff');
+  }
+  // pop-up bubble above his head with a little heart
+  if (t > 900) {
+    const bob = Math.round(Math.sin(t / 200));
+    const ux = bx + 6, uy = by - 17 + bob;
+    rect(ux - 1, uy - 1, 15, 12, K); rect(ux, uy, 13, 10, '#ffffff');
+    rect(ux + 3, uy + 11, 3, 1, K); rect(ux + 4, uy + 10, 2, 1, '#ffffff');
+    drawMap(HEART_SM, HEART_SM_C, ux + 4, uy + 3);
+  }
+  if (buzzing && !scn.buzzText) { scn.buzzText = true; setTop('BZZ... BZZ...', 'whitetext'); }
+  uiText(CONFIG.boyName, (bx + 12) * S, (feet + 4) * S, smallSize(), '#d8ecff');
+  if (t > T_NOTIFY) goTo('phone');
+}
+
+/* =========================================================
+   INTRO 2 — HE OPENS HER MESSAGE: "I miss U"
+   ========================================================= */
+const FINGER = [
+  "..KK.....",
+  ".KSSK....",
+  ".KSSK....",
+  ".KSSKKK..",
+  ".KSSSSSKK",
+  "KKSSSSSSK",
+  "KSSSSSSSK",
+  "KSSSSSSSK",
+  ".KSSSSSK.",
+  "..KSSSK..",
+];
+const T_PHONE = { card: 500, finger: 1700, tap: 2150, chat: 2500, typing: 2500, msg: 3700, end: 6800 };
+function scenePhone(t, dt) {
+  const W = VW, H = VH;
+  rect(0, 0, W, H, '#120d22');
+  drawStars(t);
+  const ph = Math.round(Math.min(H * 0.86, W * 1.5)), pw = Math.round(ph * 0.52);
+  const buzz = t > T_PHONE.card && t < T_PHONE.card + 700 && Math.floor(t / 60) % 2 ? 1 : 0;
+  const x0 = Math.round((W - pw) / 2) + buzz, y0 = Math.round((H - ph) / 2);
+  // phone body
+  rect(x0 - 1, y0 + 2, pw + 2, ph - 4, K); rect(x0 + 2, y0 - 1, pw - 4, ph + 2, K);
+  rect(x0, y0, pw, ph, '#2a2a35'); rect(x0 + 2, y0 + 1, pw - 4, 1, '#45455a');
+  const sx = x0 + 3, sy = y0 + 8, sw = pw - 6, sh = ph - 16;
+  rect(x0 + Math.round(pw / 2) - 6, y0 + 3, 12, 2, '#111116');
+  rect(x0 + Math.round(pw / 2) - 8, y0 + ph - 5, 16, 1, '#55556a');
+  const big = S >= 4 ? 24 : 16, mid = S >= 4 ? 16 : S >= 3 ? 12 : 8;
+
+  if (t < T_PHONE.chat) {
+    // lock screen wallpaper (dithered purple → pink)
+    const cols = ['#2b2160', '#43307e', '#6a3f98', '#9a52a8', '#c86aa8'];
+    for (let y = 0; y < sh; y++) for (let x = 0; x < sw; x++) {
+      const v = y / sh * (cols.length - 1), i = Math.floor(v);
+      const c = cols[Math.min(cols.length - 1, i + ((v - i) * 16 > BAYER[(y & 3) * 4 + (x & 3)] ? 1 : 0))];
+      P.fillStyle = c; P.fillRect(sx + x, sy + y, 1, 1);
+    }
+    drawMap(HEART, { K: '#6a3f98', R: '#9a52a8', W: '#c86aa8' }, sx + sw / 2 - 9, sy + sh * 0.68, 2);
+    const now = new Date(), hh = String(now.getHours()).padStart(2, '0'), mm = String(now.getMinutes()).padStart(2, '0');
+    uiText(`${hh}:${mm}`, (sx + sw / 2) * S, (sy + 6) * S, big + 8, '#ffffff');
+    // notification card slides in
+    if (t > T_PHONE.card) {
+      const k = clamp01((t - T_PHONE.card) / 300);
+      const cx = sx + 3, cw = sw - 6, ch = 20, cy = Math.round(sy + 34 - 12 * (1 - d3.easeBackOut(k)));
+      const tapped = t > T_PHONE.tap;
+      rect(cx + 1, cy - 1, cw - 2, ch + 2, '#d9cfe8'); rect(cx - 1, cy + 1, cw + 2, ch - 2, '#d9cfe8');
+      rect(cx, cy, cw, ch, tapped ? '#ffe3ee' : '#f6f2fb');
+      rect(cx + 3, cy + 4, 11, 11, '#ff6f91'); drawMap(HEART_SM, { R: '#ffffff' }, cx + 6, cy + 8);
+      uiText(CONFIG.girlName, (cx + 17) * S, (cy + 3) * S, mid, '#2a2342', 'left', false);
+      uiText('1 new message', (cx + 17) * S, (cy + 3) * S + mid * 1.6, Math.max(8, mid - 4), '#6b6480', 'left', false);
+      uiText('now', (cx + cw - 3) * S, (cy + 3) * S, 8, '#8a83a0', 'right', false);
+      // his finger taps it
+      if (t > T_PHONE.finger) {
+        const fk = clamp01((t - T_PHONE.finger) / (T_PHONE.tap - T_PHONE.finger));
+        const tx = cx + cw / 2, ty = cy + ch / 2;
+        const fx = tx + (1 - d3.easeCubicOut(fk)) * pw * 0.6, fy = ty + (1 - d3.easeCubicOut(fk)) * ph * 0.5;
+        if (tapped) circle(tx, ty, 2 + Math.floor((t - T_PHONE.tap) / 40), '#ff6f91');
+        drawMap(FINGER, { K, S: B.skin }, fx - 2, fy + (tapped ? 1 : 0));
+      }
+    }
+  } else {
+    // chat screen
+    rect(sx, sy, sw, sh, '#fbeff5');
+    for (let y = sy + 20; y < sy + sh; y += 7) for (let x = sx + 3 + (((y - sy) / 7) % 2) * 3; x < sx + sw; x += 6) rect(x, y, 1, 1, '#f1d9e6');
+    rect(sx, sy, sw, 17, '#ff6f91'); rect(sx, sy + 17, sw, 1, '#e0436f');
+    drawMap(GIRL_HEAD, GC, sx + 3, sy + 1);
+    uiText(CONFIG.girlName, (sx + 22) * S, (sy + 3) * S, mid, '#ffffff', 'left', false);
+    uiText('online', (sx + 22) * S, (sy + 3) * S + mid * 1.6, 8, '#ffe3ee', 'left', false);
+    const bx = sx + 4, by = sy + 26;
+    if (t < T_PHONE.msg) {
+      // "typing..." bubble
+      rect(bx, by, 22, 11, '#e7d3e0'); rect(bx + 1, by + 1, 20, 9, '#ffffff');
+      for (let i = 0; i < 3; i++) rect(bx + 5 + i * 5, by + 4 + (Math.floor(t / 150) % 3 === i ? -1 : 0), 2, 2, '#b9a6c4');
+    } else {
+      // her message
+      U.font = `${big}px "Press Start 2P", monospace`;
+      const msg = 'I miss U';
+      const tw = Math.ceil(U.measureText(msg).width / S), bw = tw + 10, bh = Math.ceil(big / S) + 8;
+      const pop = t - T_PHONE.msg < 120 ? 0.6 : 1;
+      const w2 = Math.round(bw * pop), h2 = Math.round(bh * pop);
+      rect(bx + 1, by - 1, w2 - 2, h2 + 2, '#ff6f91'); rect(bx - 1, by + 1, w2 + 2, h2 - 2, '#ff6f91');
+      rect(bx, by, w2, h2, '#ffd3df'); rect(bx - 2, by + h2 - 3, 3, 3, '#ff6f91');
+      if (pop === 1) {
+        uiText(msg, (bx + 5) * S, (by + 4) * S, big, '#5a1030', 'left', false);
+        drawMap(HEART, HEART_C, bx + bw + 3, by + bh / 2 - 4 + Math.round(Math.sin(t / 200)));
+        uiText('now', (bx + 1) * S, (by + bh + 3) * S, 8, '#b28aa2', 'left', false);
+      }
+      if (!scn.burst) {
+        scn.burst = true;
+        for (let i = 0; i < 10; i++) parts.push({ x: bx + bw * Math.random(), y: by, vx: (Math.random() - 0.5) * 0.04,
+          vy: -0.02 - Math.random() * 0.03, life: 1800 + i * 80, max: 2600, big: i % 3 === 0 });
+      }
+    }
+  }
+  drawParts(dt);
+  if (t > T_PHONE.end) goTo('globe');
+}
+
+/* =========================================================
+   SCENE 1 — THE GLOBE
+   ========================================================= */
+const ortho = d3.geoOrthographic().clipAngle(90).precision(0.5);
+const opath = d3.geoPath(ortho, { beginPath() {}, moveTo(x, y) { P.moveTo(x, y); }, lineTo(x, y) { P.lineTo(x, y); },
+  closePath() { P.closePath(); }, arc(x, y, r) { P.moveTo(x + r, y); P.arc(x, y, r, 0, 2 * Math.PI); } });
+const mid = d3.geoInterpolate(girlPlace.coord, boyPlace.coord)(0.5);
+const targetRotate = [-mid[0], -mid[1] + 10];
+const arcInterp = d3.geoInterpolate(girlPlace.coord, boyPlace.coord);
+const T1 = { spin: 3500, turn: 2500, pins: 800, arc: 2600, hold: 3200 };
+const t1TurnEnd = T1.spin + T1.turn, t1ArcStart = t1TurnEnd + T1.pins, t1ArcEnd = t1ArcStart + T1.arc, t1End = t1ArcEnd + T1.hold;
+
+function sceneGlobe(t) {
+  const W = VW, H = VH, cx = W / 2, cy = H / 2 + H * 0.05;
+  const baseR = Math.min(W, H) * 0.34;
+  const spin = 0.06, startLon = targetRotate[0] - spin * T1.spin - 120;
+  let rot, scale;
+  if (t < T1.spin) {
+    rot = [startLon + spin * t, -15];
+    scale = baseR * (0.6 + 0.4 * d3.easeCubicInOut(t / T1.spin));
+  } else {
+    const k = d3.easeCubicInOut(clamp01((t - T1.spin) / T1.turn));
+    const from = [startLon + spin * T1.spin, -15];
+    rot = [from[0] + (targetRotate[0] - from[0]) * k, from[1] + (targetRotate[1] - from[1]) * k];
+    scale = baseR * (1 + 0.25 * k);
+  }
+  ortho.rotate(rot).scale(scale).translate([cx, cy]);
+
+  rect(0, 0, W, H, BG);
+  drawStars(t);
+  const halo = P.createRadialGradient(cx, cy, scale * 0.95, cx, cy, scale * 1.3);
+  halo.addColorStop(0, 'rgba(80,120,255,.75)'); halo.addColorStop(1, 'rgba(80,120,255,0)');
+  P.fillStyle = halo; P.fillRect(0, 0, W, H);
+  const lx = cx - scale * 0.4, ly = cy - scale * 0.45;
+  P.beginPath(); opath({ type: 'Sphere' }); P.fillStyle = gradient(lx, ly, scale * 1.5, OCEAN); P.fill();
+  if (land) {
+    P.beginPath(); opath(land); P.fillStyle = gradient(lx, ly, scale * 1.5, LAND); P.fill();
+    const hk = clamp01((t - t1TurnEnd + 400) / 800);
+    if (hk > 0) {
+      P.globalAlpha = hk; P.fillStyle = '#ff6f91';
+      for (const s of [vnShape, ukShape]) if (s) { P.beginPath(); opath(s); P.fill(); }
+      P.globalAlpha = 1;
+    }
+  }
+  quantize();
+
+  // golden dotted flight path
+  const ak = clamp01((t - t1ArcStart) / T1.arc);
+  if (ak > 0) {
+    const e = d3.easeSinInOut(ak), n = Math.floor(e * 120);
+    let tip = null;
+    for (let i = 0; i <= n; i++) {
+      const [x, y] = ortho(arcInterp(i / 120));
+      const h = 1 + 0.2 * Math.sin(Math.PI * i / 120);
+      const X = cx + (x - cx) * h, Y = cy + (y - cy) * h;
+      if ((i + Math.floor(t / 90)) % 4 < 2) rect(X, Y, 1, 1, '#ffd23f');
+      tip = [X, Y];
+    }
+    if (tip && ak < 1) drawMap(HEART, HEART_C, tip[0] - 4, tip[1] - 6);
+  }
+
+  // pins + labels
+  const pk = clamp01((t - t1TurnEnd) / T1.pins);
+  if (pk > 0) {
+    const gp = ortho(girlPlace.coord), bp = ortho(boyPlace.coord);
+    const gLeft = gp[0] < bp[0];
+    for (const [pl, p, left] of [[girlPlace, gp, gLeft], [boyPlace, bp, !gLeft]]) {
+      const pulse = (t / 1100) % 1;
+      if (pulse < 0.8) circle(p[0], p[1], 2 + Math.floor(pulse * 10), '#ff6f91');
+      drawMap(HEART, HEART_C, p[0] - 4, p[1] - 9 - (Math.floor(t / 300) % 2));
+      const fs = labelSize(), X = p[0] * S + (left ? -8 * S : 8 * S), Y = p[1] * S - fs * 1.6;
+      uiText(pl.name, X, Y, fs, '#ffffff', left ? 'right' : 'left');
+      uiText(pl.city, X, Y + fs * 1.5, smallSize(), '#ffb3c8', left ? 'right' : 'left');
+    }
+  }
+
+  if (t > t1ArcEnd && !scn.distShown) {
+    scn.distShown = true;
+    setBottom(`<span class="gold">${distanceKm.toLocaleString()} KM APART</span><br>BUT NEVER APART IN HEART`);
+  }
+  if (t > t1End) goTo('walk');
+}
+
+/* =========================================================
+   SCENE 2 — SHE WALKS ACROSS THE WORLD
+   ========================================================= */
+const CLIP = 96;
+const azi = d3.geoAzimuthalEquidistant().clipAngle(CLIP).precision(0.5);
+const apath = d3.geoPath(azi, { beginPath() {}, moveTo(x, y) { P.moveTo(x, y); }, lineTo(x, y) { P.lineTo(x, y); },
+  closePath() { P.closePath(); }, arc(x, y, r) { P.moveTo(x + r, y); P.arc(x, y, r, 0, 2 * Math.PI); } });
+
+function rotGeo(obj, R) {
+  const mc = c => typeof c[0] === 'number' ? R(c) : c.map(mc);
+  if (!obj) return null;
+  if (obj.type === 'FeatureCollection') return { ...obj, features: obj.features.map(f => rotGeo(f, R)) };
+  if (obj.type === 'Feature') return { ...obj, geometry: rotGeo(obj.geometry, R) };
+  if (obj.type === 'GeometryCollection') return { ...obj, geometries: obj.geometries.map(g => rotGeo(g, R)) };
+  return { ...obj, coordinates: mc(obj.coordinates) };
+}
+function buildPathFrame() {
+  const a = girlPlace.coord, b = boyPlace.coord;
+  const r1 = d3.geoRotation([-a[0], -a[1]]);
+  const b1 = r1(b);
+  const la = b1[1] * Math.PI / 180, lo = b1[0] * Math.PI / 180;
+  const gdeg = Math.atan2(Math.sin(la), Math.cos(la) * Math.sin(lo)) * 180 / Math.PI;
+  let r2 = null, best = 1e9;
+  for (const gm of [gdeg, -gdeg, 180 - gdeg, gdeg - 180]) {
+    const rr = d3.geoRotation([0, 0, gm]), q = rr(b1);
+    if (q[0] > 0 && Math.abs(q[1]) < best) { best = Math.abs(q[1]); r2 = rr; }
+  }
+  const R = p => r2(r1(p));
+  const d = R(b)[0];
+  let phi = -90, a0 = 0;
+  for (const ph of [-90, 90]) {
+    azi.rotate([0, ph, 0]).translate([0, 0]).scale(100);
+    const p0 = azi([0, 0]), p1 = azi([10, 0]);
+    const A0 = Math.atan2(p0[1], p0[0]);
+    let diff = Math.atan2(p1[1], p1[0]) - A0; diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+    if (diff > 0) { phi = ph; a0 = A0; break; }
+  }
+  PF = { R, d, phi, a0, land: rotGeo(land, R), vn: rotGeo(vnShape, R), uk: rotGeo(ukShape, R) };
+}
+
+const T2 = { wait: 1200, walk: 10000, after: 2000 };
+function sceneWalk(t, dt) {
+  if (!PF) buildPathFrame();
+  const W = VW, H = VH, Rr = Math.max(W, H) * 0.75, cx = W / 2, top = Math.round(H * 0.64), cy = top + Rr;
+  const k = clamp01((t - T2.wait) / T2.walk), e = d3.easeSinInOut(k);
+  const s = PF.d * e;
+  const lam = (-Math.PI / 2 - PF.a0) * 180 / Math.PI - s;
+  azi.rotate([lam, PF.phi, 0]).scale(Rr / (CLIP * Math.PI / 180)).translate([cx, cy]);
+
+  rect(0, 0, W, H, BG);
+  drawStars(t);
+  const halo = P.createRadialGradient(cx, cy, Rr * 0.97, cx, cy, Rr + 16);
+  halo.addColorStop(0, 'rgba(110,170,255,.8)'); halo.addColorStop(1, 'rgba(110,170,255,0)');
+  P.fillStyle = halo; P.fillRect(0, 0, W, H);
+  const gx = cx, gy = top + Rr * 0.05, gr = Math.max(W, H) * 0.9;
+  P.beginPath(); apath({ type: 'Sphere' }); P.fillStyle = gradient(gx, gy, gr, OCEAN); P.fill();
+  if (PF.land) {
+    P.beginPath(); apath(PF.land); P.fillStyle = gradient(gx, gy, gr, LAND); P.fill();
+    P.fillStyle = '#ff6f91';
+    for (const sh of [PF.vn, PF.uk]) if (sh) { P.beginPath(); apath(sh); P.fill(); }
+  }
+  quantize();
+
+  // pins for both cities on her route
+  for (const [pl, c] of [[girlPlace, [0, 0]], [boyPlace, [PF.d, 0]]]) {
+    const [x, y] = azi(c);
+    if (x < -30 || x > W + 30 || y > H) continue;
+    drawMap(HEART, HEART_C, x - 4, y - 4 - (Math.floor(t / 300) % 2));
+    uiText(pl.sign, x * S, (y + 7) * S, labelSize(), '#ffffff');
+  }
+
+  // little hearts floating up behind her
+  const walking = t > T2.wait && k < 1;
+  scn.heartClock = (scn.heartClock || 0) + dt;
+  if (walking && scn.heartClock > 450) {
+    scn.heartClock = 0;
+    parts.push({ x: cx - 6, y: top - 26, vx: -0.012, vy: -0.018, life: 1800, max: 1800, big: false });
+  }
+  drawParts(dt);
+
+  const f = walking ? Math.floor(s * (Rr / CLIP) / 3) % 4 : Math.floor(t / 500) % 2;
+  drawGirl(Math.round(cx - 12), top - 33, walking ? 'walk' : 'idle', f);
+  if (k >= 1) drawMap(HEART, HEART_C, cx - 4, top - 46 - (Math.floor(t / 250) % 2) * 2);
+
+  const left = Math.round(distanceKm * (1 - e));
+  setBottom(left > 0 ? `<span class="gold">${left.toLocaleString()} KM</span> TO GO`
+                     : `<span class="gold">ARRIVED IN ${boyPlace.city}!</span>`);
+  if (t > T2.wait + T2.walk + T2.after) goTo('run');
+}
+
+/* =========================================================
+   SCENE 3 — BRIGHTON SEAFRONT: SHE RUNS TO HIM
+   (golden hour · i360 · Palace Pier · West Pier · pebble beach · teal railings)
+   ========================================================= */
+let runSky = null, runFront = null, groundY = 0, RB = {};
+const FLAG_VN = (x, y) => {
+  rect(x, y, 11, 7, '#da251d');
+  drawMap(["..Y..", "YYYYY", ".YYY.", ".Y.Y."], { Y: '#ffdd00' }, x + 3, y + 1);
+};
+const FLAG_UK = (x, y) => {
+  rect(x, y, 11, 7, '#012169');
+  for (let i = 0; i < 11; i++) { const j = Math.round(i * 6 / 10); rect(x + i, y + j, 1, 1, '#fff'); rect(x + i, y + 6 - j, 1, 1, '#fff'); }
+  rect(x, y + 2, 11, 3, '#fff'); rect(x + 4, y, 3, 7, '#fff');
+  rect(x, y + 3, 11, 1, '#c8102e'); rect(x + 5, y, 1, 7, '#c8102e');
+};
+const FLAGS = { VN: FLAG_VN, UK: FLAG_UK };
+const TEAL = '#4fbfae', TEAL_D = '#2e8c84', TEAL_L = '#8fe6d8';
+
+// draw onto an offscreen canvas using the same pixel helpers
+function layer(fn) {
+  const cv = document.createElement('canvas'); cv.width = VW; cv.height = VH;
+  const keep = P; P = cv.getContext('2d'); fn(); P = keep;
+  return cv;
+}
+// horizontal colour bands with dithered seams (classic 16-bit sky)
+function bands(y0, y1, cols) {
+  const bh = (y1 - y0) / cols.length;
+  cols.forEach((c, i) => { const a = Math.round(y0 + i * bh), b = Math.round(y0 + (i + 1) * bh); rect(0, a, VW, b - a, c); });
+  for (let i = 1; i < cols.length; i++) {
+    const yb = Math.round(y0 + i * bh);
+    for (let x = 0; x < VW; x += 2) { rect(x, yb, 1, 1, cols[i - 1]); rect(x + 1, yb - 1, 1, 1, cols[i]); }
+  }
+}
+
+function buildRunBg() {
+  const W = VW, H = VH, r = rng(42);
+  const hy = Math.round(H * 0.5), bt = Math.round(H * 0.64), gy = Math.round(H * 0.8);
+  groundY = gy;
+  const tx = Math.round(W * 0.27);
+  RB = { hy, bt, gy, tx, podLow: gy - 26, podHigh: Math.round(H * 0.12) };
+
+  runSky = layer(() => {
+    bands(0, hy, ['#4f86d0', '#6a9ad8', '#88b0e2', '#a9c5e8', '#cbd5e0', '#ecd3b4', '#f6dcb8']);
+    bands(hy, bt, ['#8fa9bd', '#7398b2', '#5f88a6', '#517c9b']);
+    rect(0, hy, W, 1, '#f3e2c8');
+  });
+
+  runFront = layer(() => {
+    // Brighton Palace Pier on the horizon
+    const pw = Math.min(72, Math.round(W * 0.26)), py = hy + 3;
+    rect(2, py, pw, 1, '#3d4057');
+    for (let x = 2; x < 2 + pw; x += 3) rect(x, py + 1, 1, 2, '#2e3144');
+    for (let x = Math.round(pw * 0.35); x < pw - 6; x += 5) {
+      const h = 2 + Math.floor(r() * 2);
+      rect(x, py - h, 4, h, '#efe9df'); rect(x + 1, py - h - 1, 2, 1, '#d6cfc2');
+    }
+    rect(pw - 4, py - 5, 1, 5, '#c94f4f'); rect(pw - 6, py - 3, 5, 1, '#c94f4f'); rect(pw - 1, py - 4, 1, 4, '#e3b04b');
+
+    // the burnt-out West Pier standing in the sea
+    const wx = Math.round(W * 0.83), wl = hy + Math.round((bt - hy) * 0.5), dy = wl - 4;
+    const R1 = '#6e3b20', R2 = '#94562e';
+    for (let x = wx - 15; x <= wx + 15; x += 2) rect(x, dy, 1, wl - dy + 1, R1);
+    rect(wx - 15, dy, 31, 1, R2); rect(wx - 15, dy + 2, 31, 1, R1);
+    for (let x = wx - 8; x <= wx + 8; x += 3) rect(x, dy - 6, 1, 6, R2);
+    rect(wx - 8, dy - 6, 17, 1, R2);
+    for (let x = -8; x <= 8; x++) rect(wx + x, dy - 6 - Math.round(3 * Math.sqrt(1 - (x / 8.5) ** 2)), 1, 1, R1);
+    for (let x = wx - 14; x <= wx - 10; x += 2) rect(x, dy - 3, 1, 3, R2);
+    rect(wx - 14, dy - 3, 5, 1, R1);
+    for (let x = wx - 15; x <= wx + 15; x += 2) rect(x, wl + 1, 1, 1, '#3f6a88');
+
+    // pebble beach
+    for (let y = bt; y < gy; y++) for (let x = 0; x < W; x++) {
+      const v = r();
+      rect(x, y, 1, 1, v < 0.55 ? '#c4874f' : v < 0.75 ? '#a96f3e' : v < 0.92 ? '#dba06a' : '#ecc093');
+    }
+    rect(0, bt, W, 1, '#8f6646');
+    // rusty old pier posts on the beach
+    for (let i = 0; i < 7; i++) {
+      const x = Math.round(W * (0.48 + i * 0.045)), h = 6 + Math.floor(r() * 6), y = bt + 3 + Math.floor(i * 0.6);
+      rect(x, y - h, 2, h, '#7a4a2a'); rect(x, y - h, 1, h, '#a0663c');
+    }
+
+    // British Airways i360 tower (the pod is animated separately)
+    const top = Math.round(H * 0.03), base = gy - 8;
+    rect(tx - 2, top, 5, base - top, '#cfcfd6');
+    rect(tx - 2, top, 1, base - top, '#f6ead8'); rect(tx - 1, top, 1, base - top, '#ececf0');
+    rect(tx + 2, top, 1, base - top, '#8e8e9a'); rect(tx - 2, top - 1, 5, 1, '#8e8e9a');
+    for (let y = top + 10; y < base; y += 14) rect(tx - 2, y, 5, 1, '#b0b0ba');
+    // Victorian kiosk at its foot
+    rect(tx - 11, gy - 16, 22, 9, '#f0e8da');
+    rect(tx - 12, gy - 18, 24, 2, '#9aa6b0'); rect(tx - 11, gy - 19, 22, 1, '#c3ccd4');
+    for (let x = tx - 9; x < tx + 9; x += 4) { rect(x, gy - 14, 2, 4, '#7f98aa'); rect(x, gy - 15, 2, 1, '#e0d4c0'); }
+
+    // the famous turquoise seafront railings
+    rect(0, gy - 10, W, 2, TEAL); rect(0, gy - 10, W, 1, TEAL_L); rect(0, gy - 2, W, 2, TEAL_D);
+    for (let x = 0; x < W; x += 10) { rect(x, gy - 10, 2, 10, TEAL_D); rect(x, gy - 10, 1, 10, TEAL); circle(x + 6, gy - 5, 2, TEAL); }
+
+    // promenade paving
+    rect(0, gy, W, H - gy, '#d6c2a0'); rect(0, gy, W, 1, '#ead9bc');
+    for (let y = gy + 5, row = 0; y < H; y += 6, row++) {
+      rect(0, y, W, 1, '#c2ab86');
+      for (let x = (row % 2) * 6; x < W; x += 12) rect(x, y - 5, 1, 5, '#c2ab86');
+    }
+
+    // teal Victorian lamp posts
+    const lamp = x => {
+      rect(x, gy - 30, 2, 30, TEAL_D); rect(x, gy - 30, 1, 30, TEAL); rect(x - 1, gy - 3, 4, 3, TEAL_D);
+      rect(x - 3, gy - 30, 8, 1, TEAL_D);
+      rect(x - 3, gy - 34, 3, 4, '#ffe9a8'); rect(x + 2, gy - 34, 3, 4, '#ffe9a8');
+      rect(x - 3, gy - 35, 3, 1, TEAL_D); rect(x + 2, gy - 35, 3, 1, TEAL_D);
+    };
+    lamp(Math.round(W * 0.45));
+    if (W > 200) lamp(Math.round(W * 0.9) - 22);
+
+    // signposts with pixel flags
+    for (const [sx, code] of [[2, CONFIG.girlCountry], [W - 17, CONFIG.boyCountry]]) {
+      rect(sx + 6, gy - 12, 3, 15, K); rect(sx + 7, gy - 12, 1, 15, '#6b3e1e');
+      rect(sx, gy - 24, 15, 12, K); rect(sx + 1, gy - 23, 13, 10, '#a8652f'); rect(sx + 1, gy - 23, 13, 1, '#c98447');
+      FLAGS[code](sx + 2, gy - 21);
+    }
+  });
+}
+
+function drawPod(cx, cy) {
+  for (let j = -4; j <= 4; j++) {
+    const hw = Math.round(16 * Math.sqrt(1 - (j / 4.8) ** 2));
+    const col = j === -4 ? '#eef6fa' : j === 0 ? '#e2f2f8' : j < 0 ? '#a9d3e6' : j === 4 ? '#c8d0d8' : '#6f9fb8';
+    rect(cx - hw, cy + j, hw * 2 + 1, 1, col);
+    if (j !== 0 && Math.abs(j) < 4) for (let x = cx - hw + 2; x < cx + hw; x += 3) rect(x, cy + j, 1, 1, j < 0 ? '#7fb0c8' : '#5a8aa3');
+  }
+  rect(cx - 16, cy, 1, 1, '#4a5a66'); rect(cx + 16, cy, 1, 1, '#4a5a66');
+  rect(cx - 10, cy - 2, 3, 1, '#ffffff'); rect(cx + 6, cy - 3, 2, 1, '#ffffff');
+  rect(cx - 3, cy + 5, 7, 1, '#d23a3a');
+}
+
+const GULL_A = ["W...W", ".WGW."], GULL_B = [".....", "WWGWW"], GULL_C = { W: '#fafafa', G: '#7b8794' };
+const T3 = { wait: 1200 };
+function sceneRun(t, dt) {
+  const W = VW, H = VH, gy = groundY, { hy, bt, tx } = RB;
+  P.drawImage(runSky, 0, 0);
+
+  // wispy golden-hour clouds
+  const rc = rng(5);
+  for (let i = 0; i < 7; i++) {
+    const len = 18 + Math.floor(rc() * 40), y = Math.round(hy * (0.15 + rc() * 0.6)), span = W + len;
+    const x = ((rc() * span + t * (0.002 + rc() * 0.002)) % span) - len;
+    rect(x, y, len, 1, '#f7e6d2'); rect(x + 4, y + 1, Math.max(4, len - 10), 1, '#e8cdb0');
+  }
+  // shimmering sea + waves washing on the pebbles
+  const rs = rng(11);
+  for (let y = hy + 2; y < bt - 1; y += 2) {
+    for (let i = 0; i < Math.max(2, Math.round(W / 40)); i++) {
+      const b = rs() * W, sp = 0.002 + rs() * 0.004, len = 2 + Math.floor(rs() * 4);
+      if (Math.sin(t / 400 + b) > -0.2) rect((b + t * sp) % W, y, len, 1, '#b6d3e4');
+    }
+  }
+  const wash = Math.sin(t / 900) > 0 ? 0 : -1;
+  for (let x = 0; x < W; x++) if ((x + Math.floor(t / 150)) % 9 < 6) rect(x, bt - 1 + wash, 1, 1, '#f4f8fb');
+
+  P.drawImage(runFront, 0, 0);
+
+  // i360 pod gliding up and down the tower
+  const pk = (1 - Math.cos(t / 24000 * Math.PI * 2)) / 2;
+  drawPod(tx, Math.round(RB.podLow + (RB.podHigh - RB.podLow) * pk));
+
+  // seagulls
+  for (let i = 0; i < 3; i++) {
+    const span = W + 20, x = ((t * (0.012 + i * 0.004) + i * span / 3) % span) - 10;
+    const y = H * (0.18 + i * 0.08) + Math.sin(t / 600 + i) * 3;
+    drawMap(Math.floor(t / (220 + i * 40)) % 2 ? GULL_A : GULL_B, GULL_C, x, y);
+  }
+  // a few love hearts in the sky + glints on the water
+  const r = rng(99);
+  const nh = Math.max(3, Math.floor(W / 80));
+  for (let i = 0; i < nh; i++) {
+    const x = (i + 0.5) * W / nh + (r() - 0.5) * 16, y = hy * (0.3 + r() * 0.4);
+    drawMap(HEART, HEART_C, x - 4, y + Math.round(Math.sin(t / 350 + i * 1.7) * 2));
+  }
+  for (let i = 0; i < nh * 3; i++) {
+    const x = r() * W, y = hy + 3 + r() * (bt - hy - 6), ph = (t / 250 + i * 2.3) % 6;
+    if (ph < 1) drawMap(SPARK_SM, SPARK_C, x - 1, y - 1); else if (ph < 2) drawMap(SPARK_BIG, SPARK_C, x - 2, y - 2);
+    else if (ph < 3) drawMap(SPARK_SM, SPARK_C, x - 1, y - 1);
+  }
+
+  // sign labels
+  const ss = smallSize();
+  uiText(girlPlace.sign, 9.5 * S, (gy - 24) * S - ss * 2, ss, '#ffffff');
+  uiText(boyPlace.sign, (W - 9.5) * S, (gy - 24) * S - ss * 2, ss, '#ffffff');
+
+  // the couple
+  const feet = gy + 1;
+  const boyX = Math.round(W * 0.62), boyY = feet - 37;
+  const gStart = 4, gEnd = boyX - 15, girlY = feet - 33;
+  const runDur = Math.max(2500, (gEnd - gStart) * 28);
+  const k = clamp01((t - T3.wait) / runDur);
+  const gx = Math.round(gStart + (gEnd - gStart) * d3.easeQuadOut(k));
+  const phase = t < T3.wait ? 'idle' : k < 1 ? 'run' : 'hug';
+  const idleF = Math.floor(t / 500) % 2;
+
+  if (phase === 'hug') {
+    drawBoy(boyX, boyY, 'hug', 0);      // his arms wrap behind her
+    drawGirl(gx, girlY, 'hug', 0);      // her arms around him
+    if (!scn.hugAt) {
+      scn.hugAt = t;
+      show('topText', false);
+      scn.timers = [
+        setTimeout(() => $('banner').classList.add('show'), 700),
+        setTimeout(() => show('replay', true), 2200),
+      ];
+    }
+    const ht = t - scn.hugAt;
+    scn.heartClock = (scn.heartClock || 0) + dt;
+    if (ht < 3000 && scn.heartClock > 110) {
+      scn.heartClock = 0;
+      parts.push({ x: boyX + Math.random() * 10 - 6, y: boyY + 2, vx: (Math.random() - 0.5) * 0.05,
+                   vy: -0.025 - Math.random() * 0.03, life: 2400, max: 2400, big: Math.random() < 0.5 });
+    }
+    drawMap(HEART, HEART_C, boyX - 9, boyY - 22 + Math.round(Math.sin(t / 250) * 2), 2);
+  } else {
+    drawBoy(boyX, boyY, k > 0.55 ? 'open' : 'idle', idleF);
+    drawGirl(gx, girlY, phase === 'run' ? 'walk' : 'idle', phase === 'run' ? Math.floor((gx - gStart) / 3) % 4 : idleF);
+  }
+  drawParts(dt);
+
+  // name tags under their feet
+  const ns = smallSize();
+  uiText(CONFIG.girlName, (gx + 12) * S, (feet + 5) * S, ns, '#ffd3df');
+  uiText(CONFIG.boyName, (boyX + 12) * S, (feet + 5) * S, ns, '#d8ecff');
+}
+
+/* ---------- particles ---------- */
+let parts = [];
+function drawParts(dt) {
+  parts = parts.filter(p => (p.life -= dt) > 0);
+  for (const p of parts) {
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    if (p.life < p.max * 0.3 && Math.floor(p.life / 80) % 2) continue;
+    if (p.big) drawMap(HEART, HEART_C, p.x - 4, p.y - 4); else drawMap(HEART_SM, HEART_SM_C, p.x - 2, p.y - 2);
+  }
+}
+
+/* =========================================================
+   SCENE MANAGER (with 16-bit dissolve transition)
+   ========================================================= */
+const SCENES = { notify: sceneNotify, phone: scenePhone, globe: sceneGlobe, walk: sceneWalk, run: sceneRun };
+const NEXT = { notify: 'phone', phone: 'globe', globe: 'walk', walk: 'run' };
+let scene = 'notify', sceneT0 = null, trans = null, last = null, scn = {};
+
+const $ = id => document.getElementById(id);
+function show(id, on) { $(id).classList.toggle('off', !on); }
+let lastBottom = '';
+function setBottom(html) { if (html !== lastBottom) { $('bottomText').innerHTML = html; lastBottom = html; } show('bottomText', true); }
+function setTop(text, cls) { $('topText').innerHTML = `<span class="${cls}">${text}</span>`; show('topText', true); }
+
+function enterScene(s, now) {
+  (scn.timers || []).forEach(clearTimeout);
+  scene = s; sceneT0 = now; scn = {}; parts = []; lastBottom = '';
+  show('topText', false); show('bottomText', false); show('replay', false);
+  $('banner').classList.remove('show');
+  show('skip', s !== 'run');
+  if (s === 'globe') setTop(CONFIG.title.toUpperCase(), 'goldtext');
+  if (s === 'walk') setTop(CONFIG.walkText.toUpperCase(), 'whitetext');
+  if (s === 'run') setTop(CONFIG.reunionText.toUpperCase(), 'goldtext');
+}
+function goTo(s) {
+  if (trans) return;
+  trans = { t0: performance.now(), to: s, switched: false };
+}
+function mask(frac) {
+  if (frac <= 0) return;
+  P.fillStyle = BG;
+  const c = 4;
+  for (let y = 0; y < VH; y += c) for (let x = 0; x < VW; x += c)
+    if ((BAYER[((y / c) & 3) * 4 + ((x / c) & 3)] + 0.5) / 16 < frac) P.fillRect(x, y, c, c);
+}
+function loop(now) {
+  if (last === null) { last = now; enterScene('notify', now); }
+  const dt = Math.min(50, now - last); last = now;
+  U.clearRect(0, 0, innerWidth, innerHeight);
+  let frac = 0;
+  if (trans) {
+    const k = (now - trans.t0) / 450;
+    if (k < 1) frac = k;
+    else {
+      if (!trans.switched) { trans.switched = true; enterScene(trans.to, now); }
+      frac = 2 - k;
+      if (k >= 2) { trans = null; frac = 0; }
+    }
+    if (frac > 0.5 && !(trans && trans.switched)) { show('topText', false); show('bottomText', false); }
+  }
+  SCENES[scene](now - sceneT0, dt);
+  if (frac > 0) { mask(frac); if (frac > 0.25) U.clearRect(0, 0, innerWidth, innerHeight); }
+  requestAnimationFrame(loop);
+}
+
+$('skip').onclick = () => NEXT[scene] && goTo(NEXT[scene]);
+$('replay').onclick = () => goTo('notify');
+$('bannerText').textContent = CONFIG.finalMessage.toUpperCase();
+addEventListener('resize', setup);
+setup();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
